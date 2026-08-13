@@ -31,12 +31,39 @@ create table if not exists daily_tasks (
   deleted boolean not null default false
 );
 
+create table if not exists routines (
+  id uuid primary key,
+  sync_group text not null,
+  title text not null,
+  created_at timestamptz not null,
+  active_weekdays jsonb not null default '[]',
+  activities jsonb not null default '[]',
+  is_archived boolean not null default false,
+  updated_at timestamptz not null default now(),
+  deleted boolean not null default false
+);
+
+create table if not exists routine_checkins (
+  id uuid primary key,
+  sync_group text not null,
+  routine_id uuid not null references routines(id) on delete cascade,
+  date timestamptz not null,
+  is_done boolean not null default true,
+  updated_at timestamptz not null default now(),
+  deleted boolean not null default false
+);
+
 create index if not exists goals_sync_group_idx on goals(sync_group, updated_at);
 create index if not exists tasks_sync_group_idx on daily_tasks(sync_group, updated_at);
 create index if not exists tasks_goal_idx on daily_tasks(goal_id);
+create index if not exists routines_sync_group_idx on routines(sync_group, updated_at);
+create index if not exists routine_checkins_sync_group_idx on routine_checkins(sync_group, updated_at);
+create index if not exists routine_checkins_routine_idx on routine_checkins(routine_id);
 
 alter table goals enable row level security;
 alter table daily_tasks enable row level security;
+alter table routines enable row level security;
+alter table routine_checkins enable row level security;
 
 -- IMPORTANT — read this.
 -- This policy is permissive: anyone holding the anon key can read/write any row. There is
@@ -48,3 +75,5 @@ alter table daily_tasks enable row level security;
 -- multi-user without tightening it first.
 create policy "shipped_personal_use" on goals for all using (true) with check (true);
 create policy "shipped_personal_use" on daily_tasks for all using (true) with check (true);
+create policy "shipped_personal_use" on routines for all using (true) with check (true);
+create policy "shipped_personal_use" on routine_checkins for all using (true) with check (true);

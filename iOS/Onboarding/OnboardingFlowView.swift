@@ -311,12 +311,14 @@ struct OnboardingFlowView: View {
 /// One tick per counted step, so the bar and the "Step N of M" label always agree.
 struct StepProgressBar: View {
     let step: OnboardingStep
+    let kind: EntryKind
     let palette: ThemePalette
 
     var body: some View {
-        let reached = step.countedPosition ?? (OnboardingStep.capacity.countedPosition ?? 0)
+        let steps = step.countedSteps(kind: kind)
+        let reached = step.countedPosition(kind: kind) ?? 0
         HStack(spacing: 4) {
-            ForEach(Array(OnboardingStep.countedSteps.enumerated()), id: \.element.rawValue) { index, _ in
+            ForEach(Array(steps.enumerated()), id: \.element.rawValue) { index, _ in
                 Capsule()
                     .fill(index < reached ? palette.accent : palette.border)
                     .frame(height: 3)
@@ -331,6 +333,7 @@ struct StepProgressBar: View {
 struct StepScaffold<Content: View, Footer: View>: View {
     @Environment(\.themePalette) private var palette
     let step: OnboardingStep
+    var kind: EntryKind = .goal
     let headline: String
     var subhead: String?
     @ViewBuilder var content: Content
@@ -340,7 +343,7 @@ struct StepScaffold<Content: View, Footer: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text(step.progressLabel).labelStyle(palette)
+                    Text(step.progressLabel(kind: kind)).labelStyle(palette)
                         .padding(.top, 24)
 
                     Text(headline)

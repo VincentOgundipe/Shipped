@@ -412,7 +412,7 @@ private struct TaskRow: View {
     }
 }
 
-private struct RoutineRow: View {
+struct RoutineRow: View {
     let routine: Routine
     let palette: ThemePalette
     var onToggle: () -> Void

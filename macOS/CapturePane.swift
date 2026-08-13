@@ -152,6 +152,10 @@ struct CapturePane: View {
     private var editor: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $text)
+                // `.plain` strips NSTextView's own built-in content inset — without it, real
+                // typed text starts several points further in than a manually-padded
+                // placeholder overlay does, so the two visibly don't line up.
+                .textEditorStyle(.plain)
                 .font(.system(size: TypeScale.bodySm))
                 .foregroundStyle(palette.text)
                 .scrollContentBackground(.hidden)
@@ -168,8 +172,7 @@ struct CapturePane: View {
                         Text("Paste or type here…")
                             .font(.system(size: TypeScale.bodySm))
                             .foregroundStyle(palette.textTertiary)
-                            .padding(.horizontal, 15)
-                            .padding(.vertical, 18)
+                            .padding(10)
                             .allowsHitTesting(false)
                     }
                 }
@@ -499,6 +502,7 @@ struct CapturePane: View {
                     Text(routineHasExistingPlan ? "Paste it in" : "Describe what you want")
                         .labelStyle(palette)
                     TextEditor(text: $routineSource)
+                        .textEditorStyle(.plain)
                         .font(.system(size: TypeScale.bodySm))
                         .foregroundStyle(palette.text)
                         .scrollContentBackground(.hidden)

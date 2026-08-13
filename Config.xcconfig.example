@@ -1,0 +1,3 @@
+// Copy this file to Config.xcconfig (which is gitignored) and fill in your own team ID.
+// Find it at developer.apple.com/account → Membership, or in Xcode → Settings → Accounts.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID_HERE

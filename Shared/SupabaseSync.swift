@@ -22,6 +22,7 @@ struct SyncRow: Codable {
     var id: UUID
     var sync_group: String
     var goal_id: UUID?
+    var routine_id: UUID?
     var title: String
     var deadline: Date?
     var original_deadline: Date?
@@ -33,6 +34,8 @@ struct SyncRow: Codable {
     var completed_at: Date?
     var rest_days: [Date]?
     var plan_snapshot: [String: String]?
+    var active_weekdays: [Int]?
+    var activities: [RoutineActivityItem]?
     var date: Date?
     var is_done: Bool?
     var task_order: Int?

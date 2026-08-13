@@ -11,10 +11,14 @@ packages:
     url: https://github.com/airbnb/lottie-ios
     from: "4.5.0"
 
+# Personal, gitignored — see Config.xcconfig.example.
+configFiles:
+  Debug: Config.xcconfig
+  Release: Config.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_TEAM: "7895Y3D474"
     CODE_SIGN_STYLE: Automatic
     CURRENT_PROJECT_VERSION: "1"
     MARKETING_VERSION: "1.0"

@@ -235,7 +235,7 @@ struct PlanRevealStepView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(step.progressLabel).labelStyle(palette)
+                Text(step.progressLabel(kind: draft.kind)).labelStyle(palette)
                     .padding(.top, 24)
 
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -359,11 +359,13 @@ struct CommitStepView: View {
 struct WidgetStepView: View {
     @Environment(\.themePalette) private var palette
     let step: OnboardingStep
+    var kind: EntryKind = .goal
     var onDone: () -> Void
 
     var body: some View {
         StepScaffold(
             step: step,
+            kind: kind,
             headline: "Put it where you'll see it",
             subhead: "The grid fills in as you ship. Missed days stay visible."
         ) {

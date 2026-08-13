@@ -12,5 +12,6 @@ xcuserdata/
 # Run `xcodegen generate` after cloning to produce this.
 Shipped.xcodeproj/
 
-# Real secrets never get committed — see Secrets.swift.example for the template.
+# Real secrets never get committed — see the .example templates for these.
 Shared/Secrets.swift
+Config.xcconfig
