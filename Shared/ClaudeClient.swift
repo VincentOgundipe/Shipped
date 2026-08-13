@@ -566,6 +566,10 @@ enum ClaudeClient {
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        // A long plan or routine schedule can legitimately take a while to generate with an
+        // 8192-token budget — URLSession's default 60s request timeout was cutting off
+        // requests that were still working, not stuck.
+        request.timeoutInterval = 150
 
         let data: Data
         let response: URLResponse

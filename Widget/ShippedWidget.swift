@@ -8,6 +8,14 @@ struct ShippedWidgetView: View {
 
     private var palette: ThemePalette { Theme.palette(for: entry.mode) }
 
+    /// The grid's cells already carry real dates internally with nothing surfacing them —
+    /// this makes the timeframe visible without needing per-cell labels, which wouldn't fit.
+    private var dateRangeLabel: String? {
+        guard let first = entry.cells.first?.date, let last = entry.cells.last?.date else { return nil }
+        let format = Date.FormatStyle().month(.abbreviated).day()
+        return "\(first.formatted(format)) – \(last.formatted(format))"
+    }
+
     var body: some View {
         Group {
             switch family {
@@ -50,6 +58,12 @@ struct ShippedWidgetView: View {
                     spacing: 2.5,
                     cornerRadius: 2
                 )
+
+                if let range = dateRangeLabel {
+                    Text(range)
+                        .font(.system(size: 8))
+                        .foregroundStyle(palette.textTertiary)
+                }
 
                 HStack(spacing: 5) {
                     Text(entry.streak > 0 ? "\(entry.streak) day streak" : "No streak")

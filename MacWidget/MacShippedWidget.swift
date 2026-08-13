@@ -10,6 +10,12 @@ struct MacShippedWidgetView: View {
 
     private var palette: ThemePalette { Theme.palette(for: entry.mode) }
 
+    private var dateRangeLabel: String? {
+        guard let first = entry.cells.first?.date, let last = entry.cells.last?.date else { return nil }
+        let format = Date.FormatStyle().month(.abbreviated).day()
+        return "\(first.formatted(format)) – \(last.formatted(format))"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let goalTitle = entry.goalTitle {
@@ -37,6 +43,12 @@ struct MacShippedWidgetView: View {
                     spacing: 2.5,
                     cornerRadius: 2
                 )
+
+                if let range = dateRangeLabel {
+                    Text(range)
+                        .font(.system(size: 9))
+                        .foregroundStyle(palette.textTertiary)
+                }
 
                 HStack(spacing: 6) {
                     Text(entry.streak > 0 ? "\(entry.streak) day streak" : "No streak")
