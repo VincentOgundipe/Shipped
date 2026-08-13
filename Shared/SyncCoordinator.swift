@@ -133,6 +133,7 @@ enum SyncCoordinator {
         goal.isArchived = row.is_archived ?? goal.isArchived
         goal.completedAt = row.completed_at
         goal.restDays = row.rest_days ?? goal.restDays
+        goal.priorityRank = row.priority_rank ?? goal.priorityRank
         goal.updatedAt = row.updated_at
         goal.pendingSync = false
     }
@@ -262,6 +263,7 @@ enum SyncCoordinator {
             is_archived: goal.isArchived,
             completed_at: goal.completedAt,
             rest_days: goal.restDays,
+            priority_rank: goal.priorityRank,
             updated_at: goal.resolvedUpdatedAt
         )
     }

@@ -326,9 +326,25 @@ struct CapturePane: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                Button {
+                    if let timelineHint {
+                        draftDeadline = Calendar.appDefault.date(
+                            byAdding: .day,
+                            value: max(3, timelineHint.days),
+                            to: .now
+                        ) ?? draftDeadline
+                    }
+                } label: {
+                    Label("Not sure yet — use this estimate", systemImage: "sparkles")
+                        .font(.system(size: TypeScale.bodySm, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(palette.accent)
+                .disabled(timelineHint == nil)
+
                 Text(goal == nil
                      ? "\(dayCount) days from today."
-                     : "\(dayCount) days from today. Creating this moves “\(goal!.title)” into your history — nothing is deleted.")
+                     : "\(dayCount) days from today. This runs alongside “\(goal!.title)”, not instead of it.")
                     .bodyStyle(palette, size: TypeScale.bodySm)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -714,15 +730,15 @@ struct CapturePane: View {
             relatedGoalTitle: draftTitle
         ))
 
-        if let existing = goal {
-            GoalActions.archive(existing, in: context, completed: existing.isComplete)
-        }
-
         let newGoal = Goal(
             title: draftTitle.trimmingCharacters(in: .whitespacesAndNewlines),
             deadline: draftDeadline,
             capacity: draftCapacity
         )
+        // Runs alongside whatever's already active rather than replacing it — multiple goals
+        // can run in parallel now, so a new one from Capture shouldn't silently archive the
+        // others.
+        newGoal.priorityRank = GoalActions.nextPriorityRank(in: context)
         context.insert(newGoal)
         for (index, draft) in draftPlan.enumerated() {
             guard let date = draft.parsedDate else { continue }

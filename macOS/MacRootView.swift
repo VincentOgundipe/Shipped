@@ -7,8 +7,7 @@ import SwiftData
 struct MacRootView: View {
     @Query(
         filter: #Predicate<Goal> { !$0.isArchived },
-        sort: \Goal.createdAt,
-        order: .reverse
+        sort: \Goal.priorityRank
     ) private var goals: [Goal]
     @Query(
         filter: #Predicate<Routine> { !$0.isArchived },
@@ -24,9 +23,16 @@ struct MacRootView: View {
     private var sidebarCollapsed = false
 
     @State private var section: MacSection = .today
+    @State private var selectedGoalID: PersistentIdentifier?
     @State private var transition = ThemeTransition()
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
+
+    /// The goal Plan/Progress focus on — whichever was last picked, falling back to top
+    /// priority. Today shows every goal at once, but those two tabs are single-goal views.
+    private var selectedGoal: Goal? {
+        (selectedGoalID.flatMap { id in goals.first { $0.persistentModelID == id } }) ?? goals.first
+    }
 
     private var goal: Goal? { goals.first }
 
@@ -161,6 +167,21 @@ struct MacRootView: View {
         try? await SyncCoordinator.sync(in: context)
     }
 
+    private var goalPicker: some View {
+        Picker("Goal", selection: Binding(
+            get: { selectedGoal?.persistentModelID },
+            set: { selectedGoalID = $0 }
+        )) {
+            ForEach(goals) { goal in
+                Text(goal.title).tag(Optional(goal.persistentModelID))
+            }
+        }
+        .labelsHidden()
+        .padding(.horizontal, 34)
+        .padding(.top, 24)
+        .padding(.bottom, 4)
+    }
+
     private func toggleSidebar() {
         withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
             sidebarCollapsed.toggle()
@@ -179,16 +200,19 @@ struct MacRootView: View {
             case .routines:
                 MacRoutinesPane(routines: routines) { withAnimation { section = .capture } }
             case .today:
-                if goal != nil || !routines.isEmpty {
-                    MacTodayPane(goal: goal, routines: routines)
+                if !goals.isEmpty || !routines.isEmpty {
+                    MacTodayPane(goals: goals, routines: routines)
                 } else {
                     MacEmptyState { withAnimation { section = .capture } }
                 }
             case .plan, .grid:
-                if let goal {
-                    switch section {
-                    case .plan: MacPlanPane(goal: goal)
-                    default: MacGridPane(goal: goal)
+                if let selectedGoal {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if goals.count > 1 { goalPicker }
+                        switch section {
+                        case .plan: MacPlanPane(goal: selectedGoal)
+                        default: MacGridPane(goal: selectedGoal)
+                        }
                     }
                 } else {
                     MacEmptyState { withAnimation { section = .capture } }
@@ -321,7 +345,7 @@ enum MacSection: String, CaseIterable, Identifiable {
 // MARK: - Today
 
 private struct MacTodayPane: View {
-    let goal: Goal?
+    let goals: [Goal]
     let routines: [Routine]
     @Environment(\.modelContext) private var context
     @Environment(\.themePalette) private var palette
@@ -331,22 +355,33 @@ private struct MacTodayPane: View {
     private var focusMode = false
 
     @State private var celebrationTick = 0
+    @State private var justCompletedGoal: Goal?
 
     private var routinesToday: [Routine] {
         routines.filter { $0.isActive(on: .now) }
     }
+    private var activeGoals: [Goal] { goals.filter { !$0.isComplete } }
+    private var completedGoals: [Goal] { goals.filter(\.isComplete) }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                if let goal {
-                    header(for: goal)
-                    grid(for: goal)
-                }
                 if !routinesToday.isEmpty { routinesBlock }
-                if let goal {
-                    todayBlock(for: goal)
-                    if !focusMode && !goal.upcomingUnfinishedTasks.isEmpty { comingUp(for: goal) }
+                ForEach(activeGoals) { goal in
+                    VStack(alignment: .leading, spacing: 20) {
+                        header(for: goal)
+                        grid(for: goal)
+                        todayBlock(for: goal)
+                        if !focusMode && !goal.upcomingUnfinishedTasks.isEmpty { comingUp(for: goal) }
+                    }
+                    .padding(18)
+                    .background(palette.surfaceRaised.opacity(0.4))
+                    .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+                }
+                ForEach(completedGoals) { goal in
+                    MacCompletedGoalCard(goal: goal, palette: palette) {
+                        GoalActions.archive(goal, in: context, completed: true)
+                    }
                 }
             }
             .padding(.horizontal, 34)
@@ -354,6 +389,13 @@ private struct MacTodayPane: View {
             .frame(maxWidth: 780, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .sheet(item: $justCompletedGoal) { goal in
+            MacCompletionView(goal: goal) {
+                GoalActions.archive(goal, in: context, completed: true)
+                justCompletedGoal = nil
+            }
+            .environment(\.themePalette, palette)
+        }
     }
 
     private var routinesBlock: some View {
@@ -500,12 +542,90 @@ private struct MacTodayPane: View {
     }
 
     private func toggle(_ task: DailyTask) {
+        let wasComplete = task.goal?.isComplete ?? false
         let becomingDone = !task.isDone
         withAnimation(Motion.snappy) { task.isDone.toggle() }
-                        task.markDirty()
+        task.markDirty()
         if becomingDone { celebrationTick += 1 }
         try? context.save()
         status.refresh()
+
+        if let goal = task.goal, !wasComplete && goal.isComplete {
+            justCompletedGoal = goal
+        }
+    }
+}
+
+/// A finished goal, shown inline rather than blocking the pane — with multiple goals running
+/// at once, one finishing shouldn't hide the others still active.
+private struct MacCompletedGoalCard: View {
+    let goal: Goal
+    let palette: ThemePalette
+    var onArchive: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            StreakFlame(level: 4, palette: palette, size: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(goal.title)
+                    .font(.system(size: TypeScale.body, weight: .semibold))
+                    .foregroundStyle(palette.text)
+                Text(goal.daysEarly > 0 ? "Shipped \(goal.daysEarly) days early." : "Shipped.")
+                    .font(.system(size: TypeScale.bodySm))
+                    .foregroundStyle(palette.textSecondary)
+            }
+            Spacer()
+            Button("Archive", action: onArchive)
+                .buttonStyle(OutlinePillButtonStyle(palette: palette))
+        }
+        .padding(16)
+        .background(palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: palette.cornerRadius)
+                .stroke(palette.accent.opacity(0.35), lineWidth: 1)
+        )
+    }
+}
+
+/// The one-time celebration shown the moment a goal transitions to complete — a sheet rather
+/// than iOS's full-screen takeover, since the Mac window still has a sidebar to get back to.
+private struct MacCompletionView: View {
+    let goal: Goal
+    let palette: ThemePalette
+    var onDone: () -> Void
+
+    init(goal: Goal, onDone: @escaping () -> Void) {
+        self.goal = goal
+        self.onDone = onDone
+        self.palette = Theme.palette(for: ThemeMode(
+            storedValue: AppSettings.defaults.string(forKey: AppSettings.themeModeKey)
+        ) ?? .light)
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            StreakFlame(level: 4, palette: palette, size: 56)
+            VStack(spacing: 8) {
+                Text("Shipped.")
+                    .displayStyle(palette, size: TypeScale.heading)
+                Text(goal.title)
+                    .bodyStyle(palette, size: TypeScale.bodySm)
+                    .multilineTextAlignment(.center)
+            }
+            HStack(spacing: 10) {
+                MacStat(value: "\(goal.tasks.count)", label: "days", palette: palette)
+                MacStat(value: "\(goal.streak)", label: "best streak", palette: palette)
+                if goal.daysEarly > 0 {
+                    MacStat(value: "\(goal.daysEarly)", label: "days early", palette: palette)
+                }
+            }
+            Button("Start the next one", action: onDone)
+                .buttonStyle(FilledPillButtonStyle(palette: palette, isDisabled: false))
+        }
+        .padding(32)
+        .frame(width: 420)
+        .background(palette.background)
     }
 }
 

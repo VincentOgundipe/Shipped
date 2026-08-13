@@ -57,6 +57,11 @@ final class Goal {
     var isArchived: Bool = false
     var completedAt: Date?
 
+    /// Manual ordering across active goals — lower sorts first. A single fixed default (0)
+    /// is lightweight-migration-safe, unlike `syncID` below: every existing row gets the same
+    /// value rather than a different one each, so there's nothing for migration to choke on.
+    var priorityRank: Int = 0
+
     /// Days the user explicitly excused. A streak survives these; missed work still moves.
     var restDays: [Date] = []
 

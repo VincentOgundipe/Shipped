@@ -15,6 +15,7 @@ create table if not exists goals (
   completed_at timestamptz,
   rest_days jsonb not null default '[]',
   plan_snapshot jsonb,
+  priority_rank int not null default 0,
   updated_at timestamptz not null default now(),
   deleted boolean not null default false
 );

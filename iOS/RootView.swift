@@ -4,8 +4,7 @@ import SwiftData
 struct RootView: View {
     @Query(
         filter: #Predicate<Goal> { !$0.isArchived },
-        sort: \Goal.createdAt,
-        order: .reverse
+        sort: \Goal.priorityRank
     ) private var goals: [Goal]
     @Query(
         filter: #Predicate<Routine> { !$0.isArchived },
@@ -21,13 +20,9 @@ struct RootView: View {
         ZStack {
             if !auth.isSignedIn {
                 SignInView(auth: auth)
-            } else if let goal = goals.first {
-                if goal.isComplete {
-                    CompletionView(goal: goal)
-                } else {
-                    NavigationStack {
-                        TodayView(goal: goal, routines: routines)
-                    }
+            } else if !goals.isEmpty {
+                NavigationStack {
+                    TodayView(goals: goals, routines: routines)
                 }
             } else if !routines.isEmpty {
                 NavigationStack {

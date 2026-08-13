@@ -3,7 +3,7 @@ import SwiftData
 import WidgetKit
 
 struct TodayView: View {
-    @Bindable var goal: Goal
+    let goals: [Goal]
     var routines: [Routine] = []
     @Environment(\.modelContext) private var context
     @Environment(\.themePalette) private var palette
@@ -12,29 +12,39 @@ struct TodayView: View {
         routines.filter { $0.isActive(on: .now) }
     }
 
-    @AppStorage(AppSettings.focusModeKey, store: AppSettings.defaults)
-    private var focusMode = false
+    private var activeGoals: [Goal] { goals.filter { !$0.isComplete } }
+    private var completedGoals: [Goal] { goals.filter(\.isComplete) }
+    /// The behind sheet only makes sense for the single most important thing — showing it
+    /// once per goal every time Today appears would be a wall of sheets.
+    private var mostUrgentBehindGoal: Goal? { activeGoals.first { $0.isBehind } }
 
     @State private var showSettings = false
+    @State private var showGoalsList = false
     @State private var showBehindSheet = false
-    @State private var celebrating = false
-    @State private var celebrationTick = 0
     @State private var notificationsOff = false
-    @State private var showRestConfirm = false
+    /// Fires exactly once, at the moment a goal transitions to complete — a permanent
+    /// full-screen route based on `isComplete` doesn't work once other goals still need
+    /// attention, but the celebratory moment itself is worth keeping.
+    @State private var justCompletedGoal: Goal?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                header
+            VStack(alignment: .leading, spacing: 30) {
                 if notificationsOff { notificationWarning }
-                gridCard
                 if !routinesToday.isEmpty { routinesSection }
-                todaySection
-                if !focusMode && !goal.upcomingUnfinishedTasks.isEmpty {
-                    comingUpSection
+                ForEach(activeGoals) { goal in
+                    GoalSection(goal: goal, palette: palette, context: context) {
+                        justCompletedGoal = goal
+                    }
+                }
+                ForEach(completedGoals) { goal in
+                    CompletedGoalCard(goal: goal, palette: palette) {
+                        GoalActions.archive(goal, in: context, completed: true)
+                    }
                 }
             }
             .padding(.horizontal, 22)
+            .padding(.top, 8)
             .padding(.bottom, 40)
         }
         .screenBackground()
@@ -42,7 +52,7 @@ struct TodayView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showSettings = true
+                    if goals.count == 1 { showSettings = true } else { showGoalsList = true }
                 } label: {
                     Image(systemName: "gearshape")
                         .foregroundStyle(palette.text)
@@ -50,19 +60,30 @@ struct TodayView: View {
             }
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView(goal: goal)
+            if let only = goals.first {
+                SettingsView(goal: only)
+                    .environment(\.themePalette, palette)
+            }
+        }
+        .sheet(isPresented: $showGoalsList) {
+            GoalsListView(goals: goals)
                 .environment(\.themePalette, palette)
         }
         .sheet(isPresented: $showBehindSheet) {
-            BehindSheet(goal: goal)
+            if let goal = mostUrgentBehindGoal {
+                BehindSheet(goal: goal)
+                    .environment(\.themePalette, palette)
+            }
+        }
+        .fullScreenCover(item: $justCompletedGoal) { goal in
+            CompletionView(goal: goal)
                 .environment(\.themePalette, palette)
         }
         .onAppear {
-            if goal.isBehind { showBehindSheet = true }
+            if mostUrgentBehindGoal != nil { showBehindSheet = true }
             Task {
                 notificationsOff = !(await NotificationScheduler.refreshAuthorization())
-                // Escalate only while actually behind; clear it the moment they catch up.
-                if goal.isBehind {
+                if let goal = mostUrgentBehindGoal {
                     await NotificationScheduler.scheduleBehindNudge(
                         missedDays: goal.missedDayCount,
                         goalTitle: goal.title
@@ -72,58 +93,6 @@ struct TodayView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // The countdown is the number that should hit first — it's the pressure.
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: -4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("\(headlineNumber)")
-                            .font(.system(size: 64, weight: palette.displayWeight))
-                            .tracking(-2)
-                            .foregroundStyle(goal.isBehind ? palette.accentSecondary : palette.text)
-                            .contentTransition(.numericText())
-                        Text(headlineUnit)
-                            .font(.system(size: TypeScale.bodyLg))
-                            .foregroundStyle(palette.textSecondary)
-                    }
-                }
-                Spacer()
-                StreakBadge(goal: goal, palette: palette, celebrateTrigger: celebrationTick)
-                    .padding(.top, 6)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(statusHeadline)
-                    .displayStyle(palette, size: TypeScale.headingSm)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(goal.title)
-                    .bodyStyle(palette, size: TypeScale.bodySm)
-            }
-        }
-        .padding(.top, 4)
-    }
-
-    private var headlineNumber: Int {
-        goal.isBehind ? goal.missedDayCount : goal.daysRemaining
-    }
-
-    private var headlineUnit: String {
-        if goal.isBehind {
-            return goal.missedDayCount == 1 ? "day missed" : "days missed"
-        }
-        return goal.daysRemaining == 1 ? "day left" : "days left"
-    }
-
-    private var statusHeadline: String {
-        if goal.isBehind { return "You fell behind." }
-        if goal.isDoneForToday { return "Done for today." }
-        if goal.todaysTasks.isEmpty { return "Nothing scheduled." }
-        return "Here's today."
     }
 
     /// Says plainly that the daily check-in can't arrive, rather than pretending it will.
@@ -152,7 +121,102 @@ struct TodayView: View {
         )
     }
 
-    // MARK: - Grid
+    // MARK: - Routines
+
+    private var routinesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Routines").labelStyle(palette)
+            VStack(spacing: 10) {
+                ForEach(routinesToday) { routine in
+                    RoutineRow(routine: routine, palette: palette) {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.7)) {
+                            RoutineActions.toggleToday(routine, in: context)
+                        }
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - One goal's section
+
+/// Everything for a single active goal — header, grid, today, coming up. Today shows one of
+/// these per active goal, top priority first, rather than picking just one to display.
+private struct GoalSection: View {
+    @Bindable var goal: Goal
+    let palette: ThemePalette
+    let context: ModelContext
+    var onComplete: () -> Void
+
+    @AppStorage(AppSettings.focusModeKey, store: AppSettings.defaults)
+    private var focusMode = false
+
+    @State private var celebrating = false
+    @State private var celebrationTick = 0
+    @State private var showRestConfirm = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            header
+            gridCard
+            todaySection
+            if !focusMode && !goal.upcomingUnfinishedTasks.isEmpty {
+                comingUpSection
+            }
+        }
+        .padding(16)
+        .background(palette.surface.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: -4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(headlineNumber)")
+                            .font(.system(size: 44, weight: palette.displayWeight))
+                            .tracking(-1.5)
+                            .foregroundStyle(goal.isBehind ? palette.accentSecondary : palette.text)
+                            .contentTransition(.numericText())
+                        Text(headlineUnit)
+                            .font(.system(size: TypeScale.body))
+                            .foregroundStyle(palette.textSecondary)
+                    }
+                }
+                Spacer()
+                StreakBadge(goal: goal, palette: palette, celebrateTrigger: celebrationTick)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(statusHeadline)
+                    .displayStyle(palette, size: TypeScale.headingSm)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(goal.title)
+                    .bodyStyle(palette, size: TypeScale.bodySm)
+            }
+        }
+    }
+
+    private var headlineNumber: Int {
+        goal.isBehind ? goal.missedDayCount : goal.daysRemaining
+    }
+
+    private var headlineUnit: String {
+        if goal.isBehind {
+            return goal.missedDayCount == 1 ? "day missed" : "days missed"
+        }
+        return goal.daysRemaining == 1 ? "day left" : "days left"
+    }
+
+    private var statusHeadline: String {
+        if goal.isBehind { return "You fell behind." }
+        if goal.isDoneForToday { return "Done for today." }
+        if goal.todaysTasks.isEmpty { return "Nothing scheduled." }
+        return "Here's today."
+    }
 
     private var gridCard: some View {
         ThemedCard {
@@ -188,26 +252,6 @@ struct TodayView: View {
             }
         }
     }
-
-    // MARK: - Routines
-
-    private var routinesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Routines").labelStyle(palette)
-            VStack(spacing: 10) {
-                ForEach(routinesToday) { routine in
-                    RoutineRow(routine: routine, palette: palette) {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.7)) {
-                            RoutineActions.toggleToday(routine, in: context)
-                        }
-                        WidgetCenter.shared.reloadAllTimelines()
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Today
 
     private var todaySection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -289,8 +333,6 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - Coming up
-
     private var comingUpSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -349,9 +391,8 @@ struct TodayView: View {
         return "First one down."
     }
 
-    // MARK: - Actions
-
     private func toggle(_ task: DailyTask) {
+        let wasComplete = goal.isComplete
         let becomingDone = !task.isDone
         withAnimation(.spring(response: 0.32, dampingFraction: 0.7)) {
             task.isDone.toggle()
@@ -361,10 +402,46 @@ struct TodayView: View {
         try? context.save()
         WidgetCenter.shared.reloadAllTimelines()
 
+        if !wasComplete && goal.isComplete {
+            onComplete()
+        }
+
         if goal.isDoneForToday {
             celebrating = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { celebrating = false }
         }
+    }
+}
+
+/// A finished goal, shown inline rather than as a full-screen takeover — with multiple goals
+/// running at once, one finishing shouldn't block seeing what's still active.
+private struct CompletedGoalCard: View {
+    let goal: Goal
+    let palette: ThemePalette
+    var onArchive: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            StreakFlame(level: 4, palette: palette, size: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(goal.title)
+                    .font(.system(size: TypeScale.body, weight: .semibold))
+                    .foregroundStyle(palette.text)
+                Text(goal.daysEarly > 0 ? "Shipped \(goal.daysEarly) days early." : "Shipped.")
+                    .font(.system(size: TypeScale.bodySm))
+                    .foregroundStyle(palette.textSecondary)
+            }
+            Spacer()
+            Button("Archive", action: onArchive)
+                .buttonStyle(OutlinePillButtonStyle(palette: palette))
+        }
+        .padding(16)
+        .background(palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: palette.cornerRadius)
+                .stroke(palette.accent.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 

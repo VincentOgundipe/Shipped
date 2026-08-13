@@ -4,8 +4,7 @@ import SwiftData
 struct MenuBarContentView: View {
     @Query(
         filter: #Predicate<Goal> { !$0.isArchived },
-        sort: \Goal.createdAt,
-        order: .reverse
+        sort: \Goal.priorityRank
     ) private var goals: [Goal]
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var status: CheckInStatus

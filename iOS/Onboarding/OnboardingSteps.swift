@@ -46,6 +46,9 @@ struct DeadlineStepView: View {
     let step: OnboardingStep
     var onNext: () -> Void
 
+    @State private var suggesting = false
+    @State private var suggestError: String?
+
     private var dayCount: Int {
         let cal = Calendar.appDefault
         return max(1, cal.dateComponents(
@@ -59,7 +62,7 @@ struct DeadlineStepView: View {
         StepScaffold(
             step: step,
             headline: "By when?",
-            subhead: "A real date. This is what the plan gets reverse-engineered from."
+            subhead: "Not sure? I can suggest one from your pace instead of you guessing."
         ) {
             VStack(alignment: .leading, spacing: 14) {
                 ThemedCard(padding: 12) {
@@ -82,10 +85,62 @@ struct DeadlineStepView: View {
                 }
                 .contentTransition(.numericText())
                 .animation(Motion.snappy, value: dayCount)
+
+                if let hint = draft.timelineHint {
+                    Text("At this pace, about \(hint.days) days is realistic. \(hint.rationale)")
+                        .font(.system(size: TypeScale.label))
+                        .foregroundStyle(palette.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button {
+                    Task { await suggestDeadline() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if suggesting {
+                            ProgressView().tint(palette.accent)
+                        } else {
+                            Image(systemName: "sparkles")
+                        }
+                        Text("Not sure yet — suggest one for me")
+                    }
+                    .font(.system(size: TypeScale.bodySm, weight: .medium))
+                    .foregroundStyle(palette.accent)
+                }
+                .buttonStyle(.plain)
+                .disabled(suggesting)
+
+                if let suggestError {
+                    Text(suggestError)
+                        .font(.system(size: TypeScale.caption))
+                        .foregroundStyle(palette.accentSecondary)
+                }
             }
         } footer: {
             Button("Next", action: onNext)
                 .buttonStyle(FilledPillButtonStyle(palette: palette))
+        }
+    }
+
+    private func suggestDeadline() async {
+        suggesting = true
+        suggestError = nil
+        defer { suggesting = false }
+        do {
+            let estimate = try await ClaudeClient.estimateGoalTimeline(
+                goalTitle: draft.title,
+                capacity: draft.capacity
+            )
+            draft.timelineHint = estimate
+            withAnimation(Motion.snappy) {
+                draft.deadline = Calendar.appDefault.date(
+                    byAdding: .day,
+                    value: max(3, estimate.days),
+                    to: .now
+                ) ?? draft.deadline
+            }
+        } catch {
+            suggestError = error.localizedDescription
         }
     }
 }

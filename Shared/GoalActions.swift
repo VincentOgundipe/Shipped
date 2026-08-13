@@ -18,6 +18,25 @@ enum GoalActions {
         try? context.save()
     }
 
+    // MARK: - Priority
+
+    /// New goals default to the bottom of the active list rather than the top, so creating
+    /// one doesn't silently bump whatever you were already prioritizing.
+    static func nextPriorityRank(in context: ModelContext) -> Int {
+        let descriptor = FetchDescriptor<Goal>(predicate: #Predicate { !$0.isArchived })
+        let active = (try? context.fetch(descriptor)) ?? []
+        return (active.map(\.priorityRank).max() ?? -1) + 1
+    }
+
+    /// Reassigns rank to match the given order — pass the full active list in its new order.
+    static func setPriorityOrder(_ orderedGoals: [Goal], in context: ModelContext) {
+        for (index, goal) in orderedGoals.enumerated() {
+            goal.priorityRank = index
+            goal.markDirty()
+        }
+        try? context.save()
+    }
+
     // MARK: - Rest days
 
     /// Excuses today: the streak survives, and today's unfinished work moves to tomorrow

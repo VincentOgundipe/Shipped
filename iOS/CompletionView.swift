@@ -8,6 +8,7 @@ struct CompletionView: View {
     @Bindable var goal: Goal
     @Environment(\.modelContext) private var context
     @Environment(\.themePalette) private var palette
+    @Environment(\.dismiss) private var dismiss
 
     @State private var revealed = false
     @State private var burstTick = 0
@@ -97,6 +98,7 @@ struct CompletionView: View {
         NotificationScheduler.cancelBehindNudge()
         GoalActions.archive(goal, in: context, completed: true)
         WidgetCenter.shared.reloadAllTimelines()
+        dismiss()
     }
 }
 

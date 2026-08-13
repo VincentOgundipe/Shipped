@@ -125,11 +125,12 @@ final class CheckInStatus: ObservableObject {
 
     func refresh() {
         let context = ModelContext(SharedStore.container)
-        let descriptor = FetchDescriptor<Goal>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
-        guard let goal = try? context.fetch(descriptor).first else {
-            isCheckedInToday = false
-            return
-        }
-        isCheckedInToday = goal.isDoneForToday
+        let descriptor = FetchDescriptor<Goal>(
+            predicate: #Predicate { !$0.isArchived },
+            sortBy: [SortDescriptor(\.priorityRank)]
+        )
+        let active = ((try? context.fetch(descriptor)) ?? []).filter { !$0.isComplete }
+        // Nothing to check in for reads as "done" — the pulse is only for outstanding work.
+        isCheckedInToday = active.allSatisfy(\.isDoneForToday)
     }
 }

@@ -255,6 +255,7 @@ struct OnboardingFlowView: View {
             capacity: draft.capacity,
             checkInHour: draft.checkInHour
         )
+        goal.priorityRank = GoalActions.nextPriorityRank(in: context)
         context.insert(goal)
 
         for (index, item) in draft.plan.enumerated() {

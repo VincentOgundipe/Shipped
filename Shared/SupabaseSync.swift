@@ -33,6 +33,7 @@ struct SyncRow: Codable {
     var is_archived: Bool?
     var completed_at: Date?
     var rest_days: [Date]?
+    var priority_rank: Int?
     var plan_snapshot: [String: String]?
     var active_weekdays: [Int]?
     var activities: [RoutineActivityItem]?

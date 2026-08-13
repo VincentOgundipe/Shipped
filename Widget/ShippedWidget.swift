@@ -61,9 +61,12 @@ struct ShippedTimelineProvider: TimelineProvider {
         let context = ModelContext(SharedStore.container)
         let descriptor = FetchDescriptor<Goal>(
             predicate: #Predicate<Goal> { !$0.isArchived },
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            sortBy: [SortDescriptor(\.priorityRank)]
         )
-        guard let goal = try? context.fetch(descriptor).first else {
+        // Prefer the top-priority goal that's still active — a completed-but-unarchived one
+        // sitting at rank 0 would otherwise show a stale "done" widget.
+        let candidates = (try? context.fetch(descriptor)) ?? []
+        guard let goal = candidates.first(where: { !$0.isComplete }) ?? candidates.first else {
             return TodayEntry(
                 date: .now, goalTitle: nil, cells: [], todayTaskTitle: nil,
                 missedDayCount: 0, daysRemaining: 0,
