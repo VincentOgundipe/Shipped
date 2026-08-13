@@ -199,6 +199,8 @@ struct MacRootView: View {
                 CoachPane(goal: goal)
             case .routines:
                 MacRoutinesPane(routines: routines) { withAnimation { section = .capture } }
+            case .focus:
+                MacFocusPane()
             case .today:
                 if !goals.isEmpty || !routines.isEmpty {
                     MacTodayPane(goals: goals, routines: routines)
@@ -314,6 +316,7 @@ enum MacSection: String, CaseIterable, Identifiable {
     case plan
     case grid
     case routines
+    case focus
     case capture
     case coach
 
@@ -325,6 +328,7 @@ enum MacSection: String, CaseIterable, Identifiable {
         case .plan: return "Plan"
         case .grid: return "Progress"
         case .routines: return "Routines"
+        case .focus: return "Focus"
         case .capture: return "Capture"
         case .coach: return "Coach"
         }
@@ -336,6 +340,7 @@ enum MacSection: String, CaseIterable, Identifiable {
         case .plan: return "calendar"
         case .grid: return "square.grid.3x3"
         case .routines: return "repeat"
+        case .focus: return "timer"
         case .capture: return "square.and.pencil"
         case .coach: return "bubble.left.and.bubble.right"
         }
@@ -356,6 +361,7 @@ private struct MacTodayPane: View {
 
     @State private var celebrationTick = 0
     @State private var justCompletedGoal: Goal?
+    @State private var appeared = false
 
     private var routinesToday: [Routine] {
         routines.filter { $0.isActive(on: .now) }
@@ -366,8 +372,10 @@ private struct MacTodayPane: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                if !routinesToday.isEmpty { routinesBlock }
-                ForEach(activeGoals) { goal in
+                if !routinesToday.isEmpty {
+                    routinesBlock.staggeredEntrance(index: 0, visible: appeared)
+                }
+                ForEach(Array(activeGoals.enumerated()), id: \.element.id) { index, goal in
                     VStack(alignment: .leading, spacing: 20) {
                         header(for: goal)
                         grid(for: goal)
@@ -377,11 +385,15 @@ private struct MacTodayPane: View {
                     .padding(18)
                     .background(palette.surfaceRaised.opacity(0.4))
                     .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+                    .staggeredEntrance(index: index + 1, visible: appeared)
                 }
-                ForEach(completedGoals) { goal in
+                ForEach(Array(completedGoals.enumerated()), id: \.element.id) { index, goal in
                     MacCompletedGoalCard(goal: goal, palette: palette) {
-                        GoalActions.archive(goal, in: context, completed: true)
+                        withAnimation(Motion.settle) {
+                            GoalActions.archive(goal, in: context, completed: true)
+                        }
                     }
+                    .staggeredEntrance(index: activeGoals.count + index + 1, visible: appeared)
                 }
             }
             .padding(.horizontal, 34)
@@ -389,6 +401,7 @@ private struct MacTodayPane: View {
             .frame(maxWidth: 780, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear { appeared = true }
         .sheet(item: $justCompletedGoal) { goal in
             MacCompletionView(goal: goal) {
                 GoalActions.archive(goal, in: context, completed: true)
@@ -496,6 +509,7 @@ private struct MacTodayPane: View {
                     }
                 }
             }
+            MacInlineAddRow(goal: goal, context: context, palette: palette) { status.refresh() }
         }
     }
 
@@ -629,6 +643,62 @@ private struct MacCompletionView: View {
     }
 }
 
+private struct MacInlineAddRow: View {
+    let goal: Goal
+    let context: ModelContext
+    let palette: ThemePalette
+    var onAdd: () -> Void
+
+    @State private var expanded = false
+    @State private var title = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        if expanded {
+            HStack(spacing: 10) {
+                TextField("Add a task for today", text: $title)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: TypeScale.bodySm))
+                    .foregroundStyle(palette.text)
+                    .focused($focused)
+                    .onSubmit(commit)
+                Button("Add", action: commit)
+                    .buttonStyle(.plain)
+                    .font(.system(size: TypeScale.bodySm, weight: .semibold))
+                    .foregroundStyle(palette.accent)
+                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(10)
+            .background(palette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: palette.cornerRadius)
+                    .stroke(palette.accent, lineWidth: 1)
+            )
+            .onAppear { focused = true }
+        } else {
+            Button {
+                withAnimation(Motion.snappy) { expanded = true }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus.circle")
+                    Text("Add a task")
+                }
+                .font(.system(size: TypeScale.label, weight: .medium))
+                .foregroundStyle(palette.textSecondary)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func commit() {
+        guard GoalActions.addTask(title, to: goal, in: context) != nil else { return }
+        title = ""
+        expanded = false
+        onAdd()
+    }
+}
+
 private struct MacTaskRow: View {
     let task: DailyTask
     let palette: ThemePalette
@@ -682,9 +752,18 @@ private struct MacPlanPane: View {
     @Environment(\.modelContext) private var context
     @Environment(\.themePalette) private var palette
 
+    private var weeks: [(weekStart: Date, tasks: [DailyTask])] {
+        let cal = Calendar.appDefault
+        let sorted = goal.tasks.sorted { $0.date < $1.date }
+        let grouped = Dictionary(grouping: sorted) { task in
+            cal.dateInterval(of: .weekOfYear, for: task.date)?.start ?? task.date
+        }
+        return grouped.keys.sorted().map { (weekStart: $0, tasks: grouped[$0] ?? []) }
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("The whole plan").labelStyle(palette)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -700,34 +779,40 @@ private struct MacPlanPane: View {
                     }
                 }
 
-                ThemedCard(padding: 8) {
-                    let sorted = goal.tasks.sorted { $0.date < $1.date }
-                    ForEach(Array(sorted.enumerated()), id: \.element.id) { index, task in
-                        Button {
-                            withAnimation(Motion.snappy) { task.isDone.toggle() }
-                        task.markDirty()
-                            try? context.save()
-                        } label: {
-                            HStack(alignment: .top, spacing: 14) {
-                                Image(systemName: task.isDone ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: TypeScale.bodySm))
-                                    .foregroundStyle(task.isDone ? palette.accent : palette.textTertiary)
-                                Text(task.date.formatted(.dateTime.month(.abbreviated).day()))
-                                    .font(.system(size: TypeScale.label, weight: .medium))
-                                    .foregroundStyle(palette.textTertiary)
-                                    .frame(width: 54, alignment: .leading)
-                                Text(task.title)
-                                    .font(.system(size: TypeScale.bodySm))
-                                    .foregroundStyle(task.isDone ? palette.textTertiary : palette.text)
-                                    .strikethrough(task.isDone, color: palette.textTertiary)
-                                Spacer()
+                ForEach(weeks, id: \.weekStart) { week in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Week of \(week.weekStart.formatted(.dateTime.month(.abbreviated).day()))")
+                            .font(.system(size: TypeScale.label, weight: .semibold))
+                            .foregroundStyle(palette.textTertiary)
+                        ThemedCard(padding: 8) {
+                            ForEach(Array(week.tasks.enumerated()), id: \.element.id) { index, task in
+                                Button {
+                                    withAnimation(Motion.snappy) { task.isDone.toggle() }
+                                    task.markDirty()
+                                    try? context.save()
+                                } label: {
+                                    HStack(alignment: .top, spacing: 14) {
+                                        Image(systemName: task.isDone ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: TypeScale.bodySm))
+                                            .foregroundStyle(task.isDone ? palette.accent : palette.textTertiary)
+                                        Text(task.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                                            .font(.system(size: TypeScale.label, weight: .medium))
+                                            .foregroundStyle(palette.textTertiary)
+                                            .frame(width: 84, alignment: .leading)
+                                        Text(task.title)
+                                            .font(.system(size: TypeScale.bodySm))
+                                            .foregroundStyle(task.isDone ? palette.textTertiary : palette.text)
+                                            .strikethrough(task.isDone, color: palette.textTertiary)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 9)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                if index < week.tasks.count - 1 { HairlineDivider() }
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 9)
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
-                        if index < sorted.count - 1 { HairlineDivider() }
                     }
                 }
             }
@@ -832,6 +917,78 @@ private struct MacLegend: View {
                 .font(.system(size: TypeScale.label))
                 .foregroundStyle(palette.textTertiary)
         }
+    }
+}
+
+// MARK: - Focus
+
+private struct MacFocusPane: View {
+    @State private var timer = PomodoroTimer()
+    @Environment(\.themePalette) private var palette
+
+    private var phaseColor: Color {
+        timer.phase == .focus ? palette.accent : palette.accentSecondary
+    }
+
+    var body: some View {
+        VStack(spacing: 26) {
+            Spacer()
+
+            Text(timer.phase.label.uppercased())
+                .font(.system(size: TypeScale.label, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(phaseColor)
+
+            ZStack {
+                Circle().stroke(palette.border, lineWidth: 10)
+                Circle()
+                    .trim(from: 0, to: timer.progress)
+                    .stroke(phaseColor, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 1), value: timer.progress)
+                Text(timer.timeLabel)
+                    .font(.system(size: 48, weight: palette.displayWeight))
+                    .foregroundStyle(palette.text)
+                    .contentTransition(.numericText())
+            }
+            .frame(width: 220, height: 220)
+
+            Text(timer.completedFocusSessions > 0
+                 ? "\(timer.completedFocusSessions) session\(timer.completedFocusSessions == 1 ? "" : "s") today"
+                 : "First session of the day")
+                .font(.system(size: TypeScale.bodySm))
+                .foregroundStyle(palette.textSecondary)
+
+            Spacer()
+
+            HStack(spacing: 14) {
+                Button {
+                    timer.reset()
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .frame(width: 44, height: 40)
+                }
+                .buttonStyle(OutlinePillButtonStyle(palette: palette))
+
+                Button {
+                    timer.isRunning ? timer.pause() : timer.start()
+                } label: {
+                    Image(systemName: timer.isRunning ? "pause.fill" : "play.fill")
+                        .frame(width: 120)
+                }
+                .buttonStyle(FilledPillButtonStyle(palette: palette))
+
+                Button {
+                    timer.skip()
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .frame(width: 44, height: 40)
+                }
+                .buttonStyle(OutlinePillButtonStyle(palette: palette))
+            }
+            .padding(.bottom, 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

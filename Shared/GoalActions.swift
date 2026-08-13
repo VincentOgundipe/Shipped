@@ -18,6 +18,22 @@ enum GoalActions {
         try? context.save()
     }
 
+    // MARK: - Inline add
+
+    /// A quick manual task, added directly rather than through Capture or plan generation —
+    /// for the "oh, and I also need to do X" case that doesn't warrant a whole re-plan.
+    @discardableResult
+    static func addTask(_ title: String, to goal: Goal, on date: Date = .now, in context: ModelContext) -> DailyTask? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let baseOrder = (goal.tasks.map(\.order).max() ?? -1) + 1
+        let task = DailyTask(date: date, title: trimmed, order: baseOrder, goal: goal)
+        context.insert(task)
+        goal.markDirty()
+        try? context.save()
+        return task
+    }
+
     // MARK: - Priority
 
     /// New goals default to the bottom of the active list rather than the top, so creating

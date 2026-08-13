@@ -68,7 +68,7 @@ private struct KindOptionCard: View {
                     .stroke(palette.border, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableStyle())
     }
 }
 
@@ -116,7 +116,7 @@ struct RoutineDetailsStepView: View {
                                             .stroke(isOn ? .clear : palette.border, lineWidth: 1)
                                     )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressableStyle())
                         }
                     }
                 }
@@ -191,7 +191,7 @@ private struct ChoiceChip: View {
                     Capsule().stroke(isSelected ? .clear : palette.border, lineWidth: 1)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableStyle())
     }
 }
 

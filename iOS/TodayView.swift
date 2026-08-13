@@ -20,27 +20,35 @@ struct TodayView: View {
 
     @State private var showSettings = false
     @State private var showGoalsList = false
+    @State private var showPomodoro = false
     @State private var showBehindSheet = false
     @State private var notificationsOff = false
     /// Fires exactly once, at the moment a goal transitions to complete — a permanent
     /// full-screen route based on `isComplete` doesn't work once other goals still need
     /// attention, but the celebratory moment itself is worth keeping.
     @State private var justCompletedGoal: Goal?
+    @State private var appeared = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
                 if notificationsOff { notificationWarning }
-                if !routinesToday.isEmpty { routinesSection }
-                ForEach(activeGoals) { goal in
+                if !routinesToday.isEmpty {
+                    routinesSection.staggeredEntrance(index: 0, visible: appeared)
+                }
+                ForEach(Array(activeGoals.enumerated()), id: \.element.id) { index, goal in
                     GoalSection(goal: goal, palette: palette, context: context) {
                         justCompletedGoal = goal
                     }
+                    .staggeredEntrance(index: index + 1, visible: appeared)
                 }
-                ForEach(completedGoals) { goal in
+                ForEach(Array(completedGoals.enumerated()), id: \.element.id) { index, goal in
                     CompletedGoalCard(goal: goal, palette: palette) {
-                        GoalActions.archive(goal, in: context, completed: true)
+                        withAnimation(Motion.settle) {
+                            GoalActions.archive(goal, in: context, completed: true)
+                        }
                     }
+                    .staggeredEntrance(index: activeGoals.count + index + 1, visible: appeared)
                 }
             }
             .padding(.horizontal, 22)
@@ -58,6 +66,18 @@ struct TodayView: View {
                         .foregroundStyle(palette.text)
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showPomodoro = true
+                } label: {
+                    Image(systemName: "timer")
+                        .foregroundStyle(palette.text)
+                }
+            }
+        }
+        .sheet(isPresented: $showPomodoro) {
+            PomodoroView()
+                .environment(\.themePalette, palette)
         }
         .sheet(isPresented: $showSettings) {
             if let only = goals.first {
@@ -80,6 +100,7 @@ struct TodayView: View {
                 .environment(\.themePalette, palette)
         }
         .onAppear {
+            appeared = true
             if mostUrgentBehindGoal != nil { showBehindSheet = true }
             Task {
                 notificationsOff = !(await NotificationScheduler.refreshAuthorization())
@@ -156,6 +177,9 @@ private struct GoalSection: View {
     @State private var celebrating = false
     @State private var celebrationTick = 0
     @State private var showRestConfirm = false
+    @State private var showAddTask = false
+    @State private var newTaskTitle = ""
+    @FocusState private var addTaskFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -267,6 +291,8 @@ private struct GoalSection: View {
                     }
                 }
             }
+
+            inlineAddRow
 
             if goal.isRestDayToday {
                 HStack(spacing: 8) {
@@ -389,6 +415,54 @@ private struct GoalSection: View {
         }
         if goal.streak > 1 { return "\(goal.streak) days in a row." }
         return "First one down."
+    }
+
+    // MARK: - Inline add
+
+    private var inlineAddRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if showAddTask {
+                HStack(spacing: 10) {
+                    TextField("Add a task for today", text: $newTaskTitle)
+                        .font(.system(size: TypeScale.bodySm))
+                        .focused($addTaskFocused)
+                        .submitLabel(.done)
+                        .onSubmit(commitNewTask)
+                    Button("Add", action: commitNewTask)
+                        .font(.system(size: TypeScale.bodySm, weight: .semibold))
+                        .foregroundStyle(palette.accent)
+                        .disabled(newTaskTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .padding(12)
+                .background(palette.surface)
+                .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: palette.cornerRadius)
+                        .stroke(palette.accent, lineWidth: 1)
+                )
+            } else {
+                Button {
+                    withAnimation(Motion.snappy) { showAddTask = true }
+                    addTaskFocused = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle")
+                        Text("Add a task")
+                    }
+                    .font(.system(size: TypeScale.label, weight: .medium))
+                    .foregroundStyle(palette.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func commitNewTask() {
+        guard GoalActions.addTask(newTaskTitle, to: goal, in: context) != nil else { return }
+        newTaskTitle = ""
+        showAddTask = false
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func toggle(_ task: DailyTask) {

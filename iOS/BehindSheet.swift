@@ -54,6 +54,9 @@ struct BehindSheet: View {
                                             .font(.system(size: TypeScale.bodySm))
                                             .foregroundStyle(palette.textSecondary)
                                         Spacer()
+                                        Text(daysOverdueLabel(task))
+                                            .font(.system(size: TypeScale.caption, weight: .semibold))
+                                            .foregroundStyle(palette.gridMissed)
                                     }
                                 }
                                 if goal.overdueTasks.count > 5 {
@@ -184,5 +187,15 @@ struct BehindSheet: View {
 
         isRecutting = false
         dismiss()
+    }
+
+    private func daysOverdueLabel(_ task: DailyTask) -> String {
+        let cal = Calendar.appDefault
+        let days = max(1, cal.dateComponents(
+            [.day],
+            from: cal.startOfDay(for: task.date),
+            to: cal.startOfDay(for: .now)
+        ).day ?? 1)
+        return days == 1 ? "1d" : "\(days)d"
     }
 }

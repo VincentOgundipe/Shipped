@@ -475,7 +475,7 @@ struct CapturePane: View {
                                     .foregroundStyle(isOn ? palette.background : palette.text)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PressableStyle())
                         }
                     }
                 }

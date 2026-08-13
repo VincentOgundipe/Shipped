@@ -303,6 +303,17 @@ struct OutlinePillButtonStyle: ButtonStyle {
     }
 }
 
+/// A bare scale-on-press, for custom-chrome buttons (cards, chips) that shouldn't get a pill
+/// background but still need to feel pressed rather than just tapped — the same feedback
+/// `FilledPillButtonStyle`/`OutlinePillButtonStyle` already give their own controls.
+struct PressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
 struct ShippedTextFieldStyle: TextFieldStyle {
     let palette: ThemePalette
 

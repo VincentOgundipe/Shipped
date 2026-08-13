@@ -178,6 +178,24 @@ struct SettingsView: View {
                 if goal.recutCount > 0 {
                     LabeledRow(label: "Plan recut", value: "\(goal.recutCount)×", palette: palette)
                 }
+
+                HairlineDivider()
+
+                NavigationLink {
+                    PlanView(goal: goal)
+                        .environment(\.themePalette, palette)
+                } label: {
+                    HStack {
+                        Text("View full plan")
+                            .font(.system(size: TypeScale.body, weight: .medium))
+                            .foregroundStyle(palette.text)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: TypeScale.bodySm))
+                            .foregroundStyle(palette.textTertiary)
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
     }
