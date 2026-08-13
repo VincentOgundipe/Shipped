@@ -5,6 +5,8 @@ enum ClaudeClientError: LocalizedError {
     case invalidAPIKey
     case rateLimited
     case offline
+    case timedOut
+    case cannotReachHost
     case serverError
     case decodingFailed
 
@@ -20,6 +22,10 @@ enum ClaudeClientError: LocalizedError {
             return "Too many requests just now. Wait a moment and try again."
         case .offline:
             return "No connection. Check your network and try again."
+        case .timedOut:
+            return "Claude took too long to respond. Try again."
+        case .cannotReachHost:
+            return "Couldn't reach Claude's servers. If you're on a restricted network (school, work, a VPN), it may be blocking this."
         case .serverError:
             return "Claude is having trouble right now. Try again in a minute."
         case .decodingFailed:
@@ -37,6 +43,34 @@ enum ClaudeClientError: LocalizedError {
         case 429: return .rateLimited
         case 500...599: return .serverError
         default: return .serverError
+        }
+    }
+
+    /// `URLSession` throws for several distinct reasons — no connection, a timeout, a blocked
+    /// or unreachable host — and collapsing all of them into "no connection" hides what's
+    /// actually happening (e.g. a network that blocks this specific domain shows the same
+    /// message as airplane mode, when they need very different fixes).
+    static func from(_ error: Error) -> ClaudeClientError {
+        guard let urlError = error as? URLError else {
+            #if DEBUG
+            print("[ClaudeClient] non-URLError network failure: \(error)")
+            #endif
+            return .offline
+        }
+        #if DEBUG
+        print("[ClaudeClient] URLError \(urlError.code.rawValue): \(urlError.localizedDescription)")
+        #endif
+        switch urlError.code {
+        case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff:
+            return .offline
+        case .timedOut:
+            return .timedOut
+        case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+             .secureConnectionFailed, .serverCertificateUntrusted,
+             .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot:
+            return .cannotReachHost
+        default:
+            return .offline
         }
     }
 }
@@ -445,7 +479,7 @@ enum ClaudeClient {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            throw ClaudeClientError.offline
+            throw ClaudeClientError.from(error)
         }
         guard let http = response as? HTTPURLResponse else { throw ClaudeClientError.serverError }
         guard http.statusCode == 200 else {
@@ -538,7 +572,7 @@ enum ClaudeClient {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            throw ClaudeClientError.offline
+            throw ClaudeClientError.from(error)
         }
         guard let http = response as? HTTPURLResponse else { throw ClaudeClientError.serverError }
         guard http.statusCode == 200 else {

@@ -65,6 +65,71 @@ struct DeadlineStepView: View {
             subhead: "Not sure? I can suggest one from your pace instead of you guessing."
         ) {
             VStack(alignment: .leading, spacing: 14) {
+                Button {
+                    Task { await suggestDeadline() }
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle().fill(palette.accent.opacity(0.15))
+                            if suggesting {
+                                ProgressView().tint(palette.accent)
+                            } else {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: TypeScale.body, weight: .semibold))
+                                    .foregroundStyle(palette.accent)
+                            }
+                        }
+                        .frame(width: 36, height: 36)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Not sure yet?")
+                                .font(.system(size: TypeScale.body, weight: .semibold))
+                                .foregroundStyle(palette.text)
+                            Text(
+                                draft.timelineHint.map { "Use the suggested \($0.days)-day estimate" }
+                                    ?? "Let me suggest one from your pace"
+                            )
+                            .font(.system(size: TypeScale.bodySm))
+                            .foregroundStyle(palette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: TypeScale.bodySm, weight: .semibold))
+                            .foregroundStyle(palette.accent)
+                    }
+                    .padding(14)
+                    .background(palette.accent.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: palette.cornerRadius)
+                            .stroke(palette.accent.opacity(0.4), lineWidth: 1.5)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(suggesting)
+
+                if let hint = draft.timelineHint {
+                    Text(hint.rationale)
+                        .font(.system(size: TypeScale.label))
+                        .foregroundStyle(palette.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 4)
+                }
+
+                if let suggestError {
+                    Text(suggestError)
+                        .font(.system(size: TypeScale.caption))
+                        .foregroundStyle(palette.accentSecondary)
+                        .padding(.horizontal, 4)
+                }
+
+                HStack(spacing: 10) {
+                    Rectangle().fill(palette.border).frame(height: 1)
+                    Text("or pick a date").font(.system(size: TypeScale.caption)).foregroundStyle(palette.textTertiary)
+                    Rectangle().fill(palette.border).frame(height: 1)
+                }
+
                 ThemedCard(padding: 12) {
                     DatePicker(
                         "Deadline",
@@ -85,36 +150,6 @@ struct DeadlineStepView: View {
                 }
                 .contentTransition(.numericText())
                 .animation(Motion.snappy, value: dayCount)
-
-                if let hint = draft.timelineHint {
-                    Text("At this pace, about \(hint.days) days is realistic. \(hint.rationale)")
-                        .font(.system(size: TypeScale.label))
-                        .foregroundStyle(palette.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Button {
-                    Task { await suggestDeadline() }
-                } label: {
-                    HStack(spacing: 6) {
-                        if suggesting {
-                            ProgressView().tint(palette.accent)
-                        } else {
-                            Image(systemName: "sparkles")
-                        }
-                        Text("Not sure yet — suggest one for me")
-                    }
-                    .font(.system(size: TypeScale.bodySm, weight: .medium))
-                    .foregroundStyle(palette.accent)
-                }
-                .buttonStyle(.plain)
-                .disabled(suggesting)
-
-                if let suggestError {
-                    Text(suggestError)
-                        .font(.system(size: TypeScale.caption))
-                        .foregroundStyle(palette.accentSecondary)
-                }
             }
         } footer: {
             Button("Next", action: onNext)

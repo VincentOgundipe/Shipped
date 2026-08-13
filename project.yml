@@ -98,6 +98,8 @@ targets:
     dependencies:
       - package: Lottie
         product: Lottie
+      - target: ShippedMacWidgetExtension
+        embed: true
     entitlements:
       path: macOS/ShippedMac.entitlements
       properties:
@@ -105,6 +107,30 @@ targets:
         com.apple.security.network.client: true
         com.apple.security.application-groups:
           - group.com.vincent.shipped
+
+  ShippedMacWidgetExtension:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Shared
+      - path: MacWidget
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vincent.shipped.mac.widget
+        INFOPLIST_KEY_CFBundleDisplayName: Shipped Widget
+        GENERATE_INFOPLIST_FILE: true
+    entitlements:
+      path: MacWidget/ShippedMacWidgetExtension.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - group.com.vincent.shipped
+    info:
+      path: MacWidget/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
 schemes:
   ShippediOS:

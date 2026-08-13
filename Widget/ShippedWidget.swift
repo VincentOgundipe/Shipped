@@ -2,94 +2,6 @@ import WidgetKit
 import SwiftUI
 import SwiftData
 
-struct TodayEntry: TimelineEntry {
-    let date: Date
-    let goalTitle: String?
-    let cells: [DayCell]
-    let todayTaskTitle: String?
-    let missedDayCount: Int
-    let daysRemaining: Int
-    let streak: Int
-    let daysBanked: Int
-    let intensity: Int
-    let mode: ThemeMode
-}
-
-struct ShippedTimelineProvider: TimelineProvider {
-    func placeholder(in context: Context) -> TodayEntry {
-        TodayEntry(
-            date: .now,
-            goalTitle: "Launch my store",
-            cells: sampleCells,
-            todayTaskTitle: "Write 3 product descriptions",
-            missedDayCount: 0,
-            daysRemaining: 32,
-            streak: 6,
-            daysBanked: 2,
-            intensity: 3,
-            mode: .light
-        )
-    }
-
-    func getSnapshot(in context: Context, completion: @escaping (TodayEntry) -> Void) {
-        completion(fetchEntry())
-    }
-
-    func getTimeline(in context: Context, completion: @escaping (Timeline<TodayEntry>) -> Void) {
-        let cal = Calendar.appDefault
-        let nextMidnight = cal.startOfDay(
-            for: cal.date(byAdding: .day, value: 1, to: .now) ?? .now
-        )
-        completion(Timeline(entries: [fetchEntry()], policy: .after(nextMidnight)))
-    }
-
-    private var sampleCells: [DayCell] {
-        (0..<42).map { index in
-            let status: DayStatus
-            switch index {
-            case 0..<10 where index % 4 == 3: status = .missed
-            case 0..<10: status = .done
-            case 10: status = .todayPending
-            default: status = .future
-            }
-            return DayCell(id: index, date: .now, status: status)
-        }
-    }
-
-    private func fetchEntry() -> TodayEntry {
-        let mode = AppSettings.themeMode
-        let context = ModelContext(SharedStore.container)
-        let descriptor = FetchDescriptor<Goal>(
-            predicate: #Predicate<Goal> { !$0.isArchived },
-            sortBy: [SortDescriptor(\.priorityRank)]
-        )
-        // Prefer the top-priority goal that's still active — a completed-but-unarchived one
-        // sitting at rank 0 would otherwise show a stale "done" widget.
-        let candidates = (try? context.fetch(descriptor)) ?? []
-        guard let goal = candidates.first(where: { !$0.isComplete }) ?? candidates.first else {
-            return TodayEntry(
-                date: .now, goalTitle: nil, cells: [], todayTaskTitle: nil,
-                missedDayCount: 0, daysRemaining: 0,
-                streak: 0, daysBanked: 0, intensity: 0, mode: mode
-            )
-        }
-
-        let pending = goal.todaysTasks.first { !$0.isDone }
-        return TodayEntry(
-            date: .now,
-            goalTitle: goal.title,
-            cells: GoalGrid.cells(for: goal),
-            todayTaskTitle: pending?.title,
-            missedDayCount: goal.missedDayCount,
-            daysRemaining: goal.daysRemaining,
-            streak: goal.streak,
-            daysBanked: goal.daysBanked,
-            intensity: goal.intensity,
-            mode: mode
-        )
-    }
-}
-
 struct ShippedWidgetView: View {
     var entry: TodayEntry
     @Environment(\.widgetFamily) private var family
@@ -171,7 +83,40 @@ struct ShippedWidgetView: View {
                             .lineLimit(2)
                     }
                     .padding(.top, 1)
+
+                    if let routineTitle = entry.routineTitle {
+                        HStack(alignment: .top, spacing: 7) {
+                            Button(intent: ToggleTodayRoutineIntent()) {
+                                Image(systemName: entry.routineDone ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(entry.routineDone ? palette.accent : palette.textSecondary)
+                            }
+                            .buttonStyle(.plain)
+
+                            Text(routineTitle)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(entry.routineDone ? palette.textSecondary : palette.text)
+                                .strikethrough(entry.routineDone)
+                                .lineLimit(1)
+                        }
+                    }
                 }
+            } else if let routineTitle = entry.routineTitle {
+                Spacer()
+                HStack(spacing: 7) {
+                    Button(intent: ToggleTodayRoutineIntent()) {
+                        Image(systemName: entry.routineDone ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 15))
+                            .foregroundStyle(entry.routineDone ? palette.accent : palette.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    Text(routineTitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(entry.routineDone ? palette.textSecondary : palette.text)
+                        .strikethrough(entry.routineDone)
+                        .lineLimit(1)
+                }
+                Spacer()
             } else {
                 Spacer()
                 Text("NO GOAL SET")
@@ -203,6 +148,15 @@ struct ShippedWidgetView: View {
                      ? "\(entry.streak) streak · +\(entry.daysBanked) banked"
                      : "\(entry.streak) day streak")
                     .font(.system(size: 12, weight: .medium))
+            } else if let routineTitle = entry.routineTitle, !entry.routineDone {
+                Text("TODAY")
+                    .font(.system(size: 9, weight: .bold))
+                Text(routineTitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(2)
+            } else if entry.routineTitle != nil {
+                Text("DONE TODAY")
+                    .font(.system(size: 9, weight: .bold))
             } else {
                 Text("No goal set")
                     .font(.system(size: 12, weight: .medium))
